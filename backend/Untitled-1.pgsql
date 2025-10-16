@@ -1,0 +1,1 @@
+SELECT * FROM "habit_completions" LIMIT 1000;
