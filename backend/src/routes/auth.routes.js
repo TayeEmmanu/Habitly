@@ -1,5 +1,5 @@
  import { Router } from "express"
-import { signup, login, logout, getCurrentUser } from "../controllers/auth.controller.ts"
+import { signup, login, logout, getCurrentUser} from "../controllers/auth.controller.js"
 import { authenticateToken } from "../middleware/auth.ts"
 
 const router = Router()

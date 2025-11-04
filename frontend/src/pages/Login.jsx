@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 import { AlertCircle } from "lucide-react"
 
@@ -12,6 +12,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get("expired") === "true") {
+      setError("Your session has expired. Please log in again.")
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

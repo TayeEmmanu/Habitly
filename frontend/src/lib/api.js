@@ -1,5 +1,20 @@
 const API_URL = "http://localhost:5000"
 
+async function handleResponse(response) {
+  if (response.status === 403) {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    window.location.href = "/login?expired=true"
+    throw new Error("Your session has expired. Please log in again.")
+  }
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Request failed" }))
+    throw new Error(error.message || `Request failed with status ${response.status}`)
+  }
+
+  return response.json()
+}
+
 export const api = {
   async signup(name, email, password) {
     const response = await fetch(`${API_URL}/auth/signup`, {
@@ -8,12 +23,9 @@ export const api = {
       body: JSON.stringify({ name, email, password }),
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Signup failed")
-    }
-
-    return response.json()
+    const data = await handleResponse(response)
+    localStorage.setItem("token", data.token)
+    return data
   },
 
   async login(email, password) {
@@ -23,43 +35,23 @@ export const api = {
       body: JSON.stringify({ email, password }),
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Login failed")
-    }
-
-    return response.json()
+    const data = await handleResponse(response)
+    localStorage.setItem("token", data.token)
+    return data
   },
 
   async logout() {
-    const token = localStorage.getItem("token")
-    const response = await fetch(`${API_URL}/auth/logout`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error("Logout failed")
-    }
-
-    return response.json()
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
   },
 
   async getProfile() {
     const token = localStorage.getItem("token")
     const response = await fetch(`${API_URL}/users/profile`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     })
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch profile")
-    }
-
-    return response.json()
+    return handleResponse(response)
   },
 
   async updateProfile(name, email) {
@@ -73,27 +65,25 @@ export const api = {
       body: JSON.stringify({ name, email }),
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Update failed")
-    }
-
-    return response.json()
+    return handleResponse(response)
   },
 
   async getHabits() {
     const token = localStorage.getItem("token")
     const response = await fetch(`${API_URL}/habits`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     })
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch habits")
-    }
+    return handleResponse(response)
+  },
 
-    return response.json()
+  async getHabitsByDate(date) {
+    const token = localStorage.getItem("token")
+    const response = await fetch(`${API_URL}/habits/by-date?date=${date}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    return handleResponse(response)
   },
 
   async createHabit(name, frequency, startDate) {
@@ -107,28 +97,17 @@ export const api = {
       body: JSON.stringify({ name, frequency, startDate }),
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Failed to create habit")
-    }
-
-    return response.json()
+    return handleResponse(response)
   },
 
   async deleteHabit(id) {
     const token = localStorage.getItem("token")
     const response = await fetch(`${API_URL}/habits/${id}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     })
 
-    if (!response.ok) {
-      throw new Error("Failed to delete habit")
-    }
-
-    return response.json()
+    return handleResponse(response)
   },
 
   async completeHabit(id, date) {
@@ -142,26 +121,15 @@ export const api = {
       body: JSON.stringify({ date }),
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Failed to complete habit")
-    }
-
-    return response.json()
+    return handleResponse(response)
   },
 
   async getCompletions(id) {
     const token = localStorage.getItem("token")
     const response = await fetch(`${API_URL}/habits/${id}/completions`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     })
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch completions")
-    }
-
-    return response.json()
+    return handleResponse(response)
   },
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 import { api } from "../lib/api"
-import { Plus, LogOut, User, CheckCircle, Trash2, AlertCircle } from "lucide-react"
+import { Plus, LogOut, User, CheckCircle, Trash2, AlertCircle, ChevronLeft, ChevronRight, Calendar } from "lucide-react"
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -13,21 +13,58 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0])
 
   useEffect(() => {
     loadHabits()
-  }, [])
+  }, [selectedDate])
 
   const loadHabits = async () => {
     try {
-      const data = await api.getHabits()
-      setHabits(data.habits)
+      const data = await api.getHabitsByDate(selectedDate)
+      setHabits(data || [])
+      setError("")
     } catch (err) {
-      setError(err.message)
+      setError("Failed to load habits. Please try refreshing the page.")
+      console.error("Error loading habits:", err)
+      setHabits([])
     } finally {
       setLoading(false)
     }
   }
+
+  const goToPreviousDay = () => {
+    const date = new Date(selectedDate)
+    date.setDate(date.getDate() - 1)
+    setSelectedDate(date.toISOString().split("T")[0])
+  }
+
+  const goToNextDay = () => {
+    const date = new Date(selectedDate)
+    date.setDate(date.getDate() + 1)
+    setSelectedDate(date.toISOString().split("T")[0])
+  }
+
+  const goToToday = () => {
+    setSelectedDate(new Date().toISOString().split("T")[0])
+  }
+
+  const today = new Date().toISOString().split("T")[0]
+  const isToday = selectedDate === today
+
+  const todayHabits = (habits || []).filter((habit) => {
+    const habitStartDate = new Date(habit.start_date).toISOString().split("T")[0]
+    return habitStartDate <= selectedDate
+  })
+
+  const futureHabits = (habits || []).filter((habit) => {
+    const habitStartDate = new Date(habit.start_date).toISOString().split("T")[0]
+    return habitStartDate > selectedDate
+  })
+
+  const completedCount = todayHabits.filter((h) => h.completed).length
+  const totalCount = todayHabits.length
+  const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
   const handleLogout = async () => {
     await logout()
@@ -36,8 +73,7 @@ export default function Dashboard() {
 
   const handleComplete = async (habitId) => {
     try {
-      const today = new Date().toISOString().split("T")[0]
-      await api.completeHabit(habitId, today)
+      await api.completeHabit(habitId, selectedDate)
       loadHabits()
     } catch (err) {
       setError(err.message)
@@ -54,12 +90,6 @@ export default function Dashboard() {
       setError(err.message)
     }
   }
-
-  const todayHabits = habits.filter((habit) => {
-    const today = new Date().toISOString().split("T")[0]
-    const startDate = new Date(habit.start_date).toISOString().split("T")[0]
-    return startDate <= today
-  })
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--color-surface)" }}>
@@ -80,22 +110,95 @@ export default function Dashboard() {
 
       <main style={{ padding: "2rem 0" }}>
         <div className="container">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
-            <div>
-              <h2 style={{ fontSize: "2rem", fontWeight: "bold", marginBottom: "0.5rem" }}>Today's Habits</h2>
-              <p style={{ color: "var(--color-text-muted)" }}>
-                {new Date().toLocaleDateString("en-US", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </p>
+          <div style={{ marginBottom: "2rem" }}>
+            <div
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                <button onClick={goToPreviousDay} className="btn btn-ghost btn-icon">
+                  <ChevronLeft size={20} />
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Calendar size={20} style={{ color: "var(--color-text-muted)" }} />
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="input"
+                    style={{ width: "auto" }}
+                  />
+                </div>
+                <button onClick={goToNextDay} className="btn btn-ghost btn-icon">
+                  <ChevronRight size={20} />
+                </button>
+                {!isToday && (
+                  <button onClick={goToToday} className="btn btn-outline" style={{ fontSize: "0.875rem" }}>
+                    Today
+                  </button>
+                )}
+              </div>
+              <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
+                <Plus size={20} style={{ marginRight: "0.5rem" }} />
+                New Habit
+              </button>
             </div>
-            <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
-              <Plus size={20} style={{ marginRight: "0.5rem" }} />
-              New Habit
-            </button>
+
+            {todayHabits.length > 0 && (
+              <div
+                className="card"
+                style={{
+                  backgroundColor: isToday ? "var(--color-primary)" : "var(--color-surface-elevated)",
+                  color: isToday ? "white" : "inherit",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <div className="card-content" style={{ padding: "1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h3 style={{ fontSize: "0.875rem", fontWeight: "500", opacity: 0.9, marginBottom: "0.5rem" }}>
+                        {isToday ? "Today's Progress" : "Progress"}
+                      </h3>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "2.5rem", fontWeight: "bold" }}>{completionPercentage}%</span>
+                        <span style={{ fontSize: "1rem", opacity: 0.8 }}>
+                          {completedCount} of {totalCount} completed
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        width: "80px",
+                        height: "80px",
+                        borderRadius: "50%",
+                        border: `6px solid ${isToday ? "rgba(255,255,255,0.3)" : "var(--color-border)"}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        position: "relative",
+                      }}
+                    >
+                      <svg
+                        style={{ position: "absolute", top: 0, left: 0, transform: "rotate(-90deg)" }}
+                        width="80"
+                        height="80"
+                      >
+                        <circle
+                          cx="40"
+                          cy="40"
+                          r="34"
+                          fill="none"
+                          stroke={isToday ? "white" : "var(--color-primary)"}
+                          strokeWidth="6"
+                          strokeDasharray={`${(completionPercentage / 100) * 213.6} 213.6`}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <CheckCircle size={32} style={{ opacity: 0.9 }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -110,45 +213,108 @@ export default function Dashboard() {
               <div className="spinner"></div>
               <p style={{ marginTop: "1rem", color: "var(--color-text-muted)" }}>Loading habits...</p>
             </div>
-          ) : todayHabits.length === 0 ? (
-            <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-              <p style={{ fontSize: "1.125rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-                No habits yet. Create your first habit to get started!
-              </p>
-              <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
-                <Plus size={20} style={{ marginRight: "0.5rem" }} />
-                Create Habit
-              </button>
-            </div>
           ) : (
-            <div style={{ display: "grid", gap: "1rem" }}>
-              {todayHabits.map((habit) => (
-                <HabitCard key={habit.id} habit={habit} onComplete={handleComplete} onDelete={handleDelete} />
-              ))}
-            </div>
-          )}
+            <>
+              {todayHabits.length > 0 && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <h2
+                    style={{
+                      fontSize: "1.5rem",
+                      fontWeight: "bold",
+                      marginBottom: "1rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    {isToday
+                      ? "Today's Habits"
+                      : `Habits for ${new Date(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+                    {isToday && (
+                      <span
+                        style={{
+                          fontSize: "0.875rem",
+                          fontWeight: "500",
+                          padding: "0.25rem 0.75rem",
+                          borderRadius: "9999px",
+                          backgroundColor: "var(--color-primary)",
+                          color: "white",
+                        }}
+                      >
+                        {todayHabits.length}
+                      </span>
+                    )}
+                  </h2>
+                  <div style={{ display: "grid", gap: "1rem" }}>
+                    {todayHabits.map((habit) => (
+                      <HabitCard
+                        key={habit.id}
+                        habit={habit}
+                        onComplete={handleComplete}
+                        onDelete={handleDelete}
+                        isToday={isToday}
+                        selectedDate={selectedDate}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          <div className="card" style={{ marginTop: "2rem" }}>
-            <div className="card-header">
-              <h3 className="card-title">Statistics</h3>
-            </div>
-            <div className="card-content">
-              <div
-                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1.5rem" }}
-              >
+              {futureHabits.length > 0 && (
                 <div>
-                  <p style={{ fontSize: "0.875rem", color: "var(--color-text-muted)" }}>Total Habits</p>
-                  <p style={{ fontSize: "2rem", fontWeight: "bold", color: "var(--color-primary)" }}>{habits.length}</p>
+                  <h2
+                    style={{
+                      fontSize: "1.5rem",
+                      fontWeight: "bold",
+                      marginBottom: "1rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    Future Habits
+                    <span
+                      style={{
+                        fontSize: "0.875rem",
+                        fontWeight: "500",
+                        padding: "0.25rem 0.75rem",
+                        borderRadius: "9999px",
+                        backgroundColor: "var(--color-surface-elevated)",
+                        color: "var(--color-text-muted)",
+                      }}
+                    >
+                      {futureHabits.length}
+                    </span>
+                  </h2>
+                  <div style={{ display: "grid", gap: "1rem" }}>
+                    {futureHabits.map((habit) => (
+                      <HabitCard
+                        key={habit.id}
+                        habit={habit}
+                        onComplete={handleComplete}
+                        onDelete={handleDelete}
+                        isFuture={true}
+                        selectedDate={selectedDate}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <p style={{ fontSize: "0.875rem", color: "var(--color-text-muted)" }}>Today's Habits</p>
-                  <p style={{ fontSize: "2rem", fontWeight: "bold", color: "var(--color-primary)" }}>
-                    {todayHabits.length}
+              )}
+
+              {todayHabits.length === 0 && futureHabits.length === 0 && (
+                <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
+                  <p style={{ fontSize: "1.125rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
+                    No habits yet. Create your first habit to get started!
                   </p>
+                  <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
+                    <Plus size={20} style={{ marginRight: "0.5rem" }} />
+                    Create Habit
+                  </button>
                 </div>
-              </div>
-            </div>
-          </div>
+              )}
+            </>
+          )}
         </div>
       </main>
 
@@ -157,35 +323,97 @@ export default function Dashboard() {
   )
 }
 
-function HabitCard({ habit, onComplete, onDelete }) {
-  const [completed, setCompleted] = useState(false)
-
+function HabitCard({ habit, onComplete, onDelete, isToday = false, isFuture = false, selectedDate }) {
   const handleComplete = async () => {
     await onComplete(habit.id)
-    setCompleted(true)
   }
 
+  const getFrequencyColor = (frequency) => {
+    switch (frequency.toLowerCase()) {
+      case "daily":
+        return "#3b82f6" // Blue
+      case "weekly":
+        return "#10b981" // Green
+      case "monthly":
+        return "#f59e0b" // Orange
+      default:
+        return "#6b7280" // Gray
+    }
+  }
+
+  const cardStyle = isFuture
+    ? {
+        opacity: 0.6,
+        border: "2px dashed var(--color-border)",
+        backgroundColor: "var(--color-surface-elevated)",
+      }
+    : isToday && !habit.completed
+      ? {
+          border: "2px solid var(--color-primary)",
+          boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.1)",
+        }
+      : {}
+
   return (
-    <div className="card">
+    <div className="card" style={cardStyle}>
       <div className="card-content" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ flex: 1 }}>
-          <h3 style={{ fontSize: "1.125rem", fontWeight: "600", marginBottom: "0.5rem" }}>{habit.name}</h3>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <span className={`badge badge-${habit.frequency}`}>{habit.frequency}</span>
+          <h3 style={{ fontSize: "1.125rem", fontWeight: "600", marginBottom: "0.5rem" }}>
+            {habit.name}
+            {isFuture && (
+              <span
+                style={{
+                  marginLeft: "0.5rem",
+                  fontSize: "0.75rem",
+                  fontWeight: "500",
+                  padding: "0.125rem 0.5rem",
+                  borderRadius: "0.25rem",
+                  backgroundColor: "var(--color-surface-elevated)",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                Starts {new Date(habit.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </span>
+            )}
+          </h3>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <span
+              className="badge"
+              style={{
+                backgroundColor: getFrequencyColor(habit.frequency),
+                color: "white",
+                fontWeight: "500",
+              }}
+            >
+              {habit.frequency}
+            </span>
             <span style={{ fontSize: "0.875rem", color: "var(--color-text-muted)" }}>
-              Started {new Date(habit.start_date).toLocaleDateString()}
+              Started{" "}
+              {new Date(habit.start_date).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
             </span>
           </div>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button
-            onClick={handleComplete}
-            className={completed ? "btn btn-success" : "btn btn-outline"}
-            disabled={completed}
-          >
-            <CheckCircle size={20} style={{ marginRight: "0.5rem" }} />
-            {completed ? "Completed" : "Mark Complete"}
-          </button>
+          {isFuture ? (
+            <button className="btn btn-outline" disabled style={{ opacity: 0.5 }}>
+              Not Started
+            </button>
+          ) : habit.completed ? (
+            <button className="btn btn-success" disabled>
+              <CheckCircle size={20} style={{ marginRight: "0.5rem" }} />
+              Completed
+            </button>
+          ) : (
+            <button onClick={handleComplete} className="btn btn-outline">
+              <CheckCircle size={20} style={{ marginRight: "0.5rem" }} />
+              Mark Complete
+            </button>
+          )}
           <button onClick={() => onDelete(habit.id)} className="btn btn-ghost btn-icon">
             <Trash2 size={20} />
           </button>
