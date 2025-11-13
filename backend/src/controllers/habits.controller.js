@@ -2,24 +2,61 @@ import { pool } from "../config/database.ts"
 
 export const createHabit = async (req, res) => {
   try {
-    const { name, frequency, startDate } = req.body
+    const { name, frequency, startDate, customInterval } = req.body
     const userId = req.user.userId
 
-    console.log("[v0] Creating habit:", { name, frequency, startDate, userId })
+    console.log("[v0] Creating habit:", { name, frequency, startDate, customInterval, userId })
 
     if (!name || !frequency) {
       return res.status(400).json({ error: "Name and frequency are required" })
     }
 
+    if (frequency === "custom" && (!customInterval || customInterval < 1)) {
+      return res.status(400).json({ error: "Custom interval must be at least 1 day" })
+    }
+
     const result = await pool.query(
-      "INSERT INTO habits (user_id, name, frequency, start_date) VALUES ($1, $2, $3, $4) RETURNING *",
-      [userId, name, frequency, startDate || new Date()],
+      "INSERT INTO habits (user_id, name, frequency, start_date, custom_interval) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [userId, name, frequency, startDate || new Date(), frequency === "custom" ? customInterval : null],
     )
 
     console.log("[v0] Habit created successfully:", result.rows[0])
     res.status(201).json(result.rows[0])
   } catch (error) {
     console.error("[v0] Create habit error:", error.message, error.stack)
+    res.status(500).json({ error: "Server error", details: error.message })
+  }
+}
+
+export const updateHabit = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, frequency, startDate, customInterval } = req.body
+    const userId = req.user.userId
+
+    console.log("[v0] Updating habit:", { id, name, frequency, startDate, customInterval, userId })
+
+    if (!name || !frequency) {
+      return res.status(400).json({ error: "Name and frequency are required" })
+    }
+
+    if (frequency === "custom" && (!customInterval || customInterval < 1)) {
+      return res.status(400).json({ error: "Custom interval must be at least 1 day" })
+    }
+
+    const result = await pool.query(
+      "UPDATE habits SET name = $1, frequency = $2, start_date = $3, custom_interval = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 AND user_id = $6 RETURNING *",
+      [name, frequency, startDate, frequency === "custom" ? customInterval : null, id, userId],
+    )
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Habit not found" })
+    }
+
+    console.log("[v0] Habit updated successfully:", result.rows[0])
+    res.json(result.rows[0])
+  } catch (error) {
+    console.error("[v0] Update habit error:", error.message, error.stack)
     res.status(500).json({ error: "Server error", details: error.message })
   }
 }
@@ -48,17 +85,21 @@ export const getHabitsByDate = async (req, res) => {
 
     const habitsResult = await pool.query("SELECT * FROM habits WHERE user_id = $1 ORDER BY created_at DESC", [userId])
 
-    // For each habit, check if it's completed based on its frequency:
-    // - daily: check exact date
-    // - weekly: check if completed any time during the week containing the date
-    // - monthly: check if completed any time during the month containing the date
     const habitsWithCompletion = await Promise.all(
       habitsResult.rows.map(async (habit) => {
         let completionQuery
         let queryParams
 
-        if (habit.frequency === "daily") {
-          // Check for completion on the exact date
+        if (habit.frequency === "custom") {
+          completionQuery = `
+            SELECT COUNT(*) as count 
+            FROM habit_completions 
+            WHERE habit_id = $1 
+            AND completed_date >= $2::date - INTERVAL '1 day' * $3
+            AND completed_date <= $2::date
+          `
+          queryParams = [habit.id, date, habit.custom_interval - 1]
+        } else if (habit.frequency === "daily") {
           completionQuery = `
             SELECT COUNT(*) as count 
             FROM habit_completions 
@@ -66,8 +107,6 @@ export const getHabitsByDate = async (req, res) => {
           `
           queryParams = [habit.id, date]
         } else if (habit.frequency === "weekly") {
-          // Check for completion any time during the week containing the date
-          // Week starts on Monday
           completionQuery = `
             SELECT COUNT(*) as count 
             FROM habit_completions 
@@ -77,7 +116,6 @@ export const getHabitsByDate = async (req, res) => {
           `
           queryParams = [habit.id, date]
         } else if (habit.frequency === "monthly") {
-          // Check for completion any time during the month containing the date
           completionQuery = `
             SELECT COUNT(*) as count 
             FROM habit_completions 
@@ -91,14 +129,24 @@ export const getHabitsByDate = async (req, res) => {
         const completionResult = await pool.query(completionQuery, queryParams)
         const completed = Number.parseInt(completionResult.rows[0].count) > 0
 
+        const completionsResult = await pool.query(
+          "SELECT * FROM habit_completions WHERE habit_id = $1 ORDER BY completed_date DESC",
+          [habit.id],
+        )
+
+        const streaks = calculateStreaks(completionsResult.rows, habit.frequency, habit.custom_interval)
+
         return {
           ...habit,
           completed,
+          currentStreak: streaks.currentStreak,
+          longestStreak: streaks.longestStreak,
+          totalCompletions: completionsResult.rows.length,
         }
       }),
     )
 
-    console.log("[v0] Habits with completion status:", habitsWithCompletion.length)
+    console.log("[v0] Habits with completion status and streaks:", habitsWithCompletion.length)
     res.json(habitsWithCompletion)
   } catch (error) {
     console.error("[v0] Get habits by date error:", error.message, error.stack)
@@ -145,15 +193,21 @@ export const completeHabit = async (req, res) => {
     let existingCompletionQuery
     let queryParams
 
-    if (habit.frequency === "daily") {
-      // For daily habits, check exact date
+    if (habit.frequency === "custom") {
+      existingCompletionQuery = `
+        SELECT * FROM habit_completions 
+        WHERE habit_id = $1 
+        AND completed_date >= $2::date - INTERVAL '1 day' * $3
+        AND completed_date <= $2::date
+      `
+      queryParams = [id, completionDate, habit.custom_interval - 1]
+    } else if (habit.frequency === "daily") {
       existingCompletionQuery = `
         SELECT * FROM habit_completions 
         WHERE habit_id = $1 AND completed_date = $2
       `
       queryParams = [id, completionDate]
     } else if (habit.frequency === "weekly") {
-      // For weekly habits, check if already completed this week
       existingCompletionQuery = `
         SELECT * FROM habit_completions 
         WHERE habit_id = $1 
@@ -162,7 +216,6 @@ export const completeHabit = async (req, res) => {
       `
       queryParams = [id, completionDate]
     } else if (habit.frequency === "monthly") {
-      // For monthly habits, check if already completed this month
       existingCompletionQuery = `
         SELECT * FROM habit_completions 
         WHERE habit_id = $1 
@@ -175,7 +228,14 @@ export const completeHabit = async (req, res) => {
     const existingCompletion = await pool.query(existingCompletionQuery, queryParams)
 
     if (existingCompletion.rows.length > 0) {
-      const period = habit.frequency === "daily" ? "date" : habit.frequency === "weekly" ? "week" : "month"
+      const period =
+        habit.frequency === "custom"
+          ? `${habit.custom_interval}-day period`
+          : habit.frequency === "daily"
+            ? "date"
+            : habit.frequency === "weekly"
+              ? "week"
+              : "month"
       return res.status(400).json({ error: `Habit already completed for this ${period}` })
     }
 
@@ -232,7 +292,16 @@ export const uncompleteHabit = async (req, res) => {
     let deleteQuery
     let queryParams
 
-    if (habit.frequency === "daily") {
+    if (habit.frequency === "custom") {
+      deleteQuery = `
+        DELETE FROM habit_completions 
+        WHERE habit_id = $1 
+        AND completed_date >= $2::date - INTERVAL '1 day' * $3
+        AND completed_date <= $2::date
+        RETURNING *
+      `
+      queryParams = [id, completionDate, habit.custom_interval - 1]
+    } else if (habit.frequency === "daily") {
       deleteQuery = "DELETE FROM habit_completions WHERE habit_id = $1 AND completed_date = $2 RETURNING *"
       queryParams = [id, completionDate]
     } else if (habit.frequency === "weekly") {
@@ -288,7 +357,7 @@ export const getCompletions = async (req, res) => {
   }
 }
 
-const calculateStreaks = (completions, frequency) => {
+const calculateStreaks = (completions, frequency, customInterval = null) => {
   if (completions.length === 0) {
     return { currentStreak: 0, longestStreak: 0 }
   }
@@ -302,15 +371,26 @@ const calculateStreaks = (completions, frequency) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  // Check if the most recent completion is within the current period
+  const getWeekStart = (date) => {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    const day = d.getDay()
+    const diff = day === 0 ? -6 : 1 - day // If Sunday, go back 6 days; otherwise go back to Monday
+    d.setDate(d.getDate() + diff)
+    return d
+  }
+
   const mostRecent = sortedDates[0]
   const isCurrentPeriod = (date) => {
-    if (frequency === "daily") {
+    if (frequency === "custom") {
+      const diffDays = Math.floor((today - date) / (1000 * 60 * 60 * 24))
+      return diffDays < customInterval
+    } else if (frequency === "daily") {
       return date.toDateString() === today.toDateString()
     } else if (frequency === "weekly") {
-      const weekStart = new Date(today)
-      weekStart.setDate(today.getDate() - today.getDay() + 1)
-      return date >= weekStart && date <= today
+      const currentWeekStart = getWeekStart(today)
+      const dateWeekStart = getWeekStart(date)
+      return currentWeekStart.getTime() === dateWeekStart.getTime()
     } else if (frequency === "monthly") {
       return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear()
     }
@@ -321,17 +401,22 @@ const calculateStreaks = (completions, frequency) => {
     currentStreak = 1
   }
 
-  // Calculate streaks
   for (let i = 1; i < sortedDates.length; i++) {
     const current = sortedDates[i]
     const previous = sortedDates[i - 1]
 
     let isConsecutive = false
-    if (frequency === "daily") {
+    if (frequency === "custom") {
+      const diffDays = Math.floor((previous - current) / (1000 * 60 * 60 * 24))
+      isConsecutive = diffDays <= customInterval
+    } else if (frequency === "daily") {
       const diffDays = Math.floor((previous - current) / (1000 * 60 * 60 * 24))
       isConsecutive = diffDays === 1
     } else if (frequency === "weekly") {
-      const diffWeeks = Math.floor((previous - current) / (1000 * 60 * 60 * 24 * 7))
+      const previousWeekStart = getWeekStart(previous)
+      const currentWeekStart = getWeekStart(current)
+      const diffMs = previousWeekStart - currentWeekStart
+      const diffWeeks = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 7))
       isConsecutive = diffWeeks === 1
     } else if (frequency === "monthly") {
       const monthDiff =
@@ -372,7 +457,7 @@ export const getHabitWithStreaks = async (req, res) => {
       [id],
     )
 
-    const streaks = calculateStreaks(completionsResult.rows, habit.frequency)
+    const streaks = calculateStreaks(completionsResult.rows, habit.frequency, habit.custom_interval)
 
     res.json({
       ...habit,
@@ -399,7 +484,7 @@ export const getAllHabitsWithStreaks = async (req, res) => {
           [habit.id],
         )
 
-        const streaks = calculateStreaks(completionsResult.rows, habit.frequency)
+        const streaks = calculateStreaks(completionsResult.rows, habit.frequency, habit.custom_interval)
 
         return {
           ...habit,

@@ -4,7 +4,19 @@ import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 import { api } from "../lib/api"
-import { Plus, LogOut, User, CheckCircle, Trash2, AlertCircle, ChevronLeft, ChevronRight, Calendar } from "lucide-react"
+import {
+  Plus,
+  LogOut,
+  User,
+  CheckCircle,
+  Trash2,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Edit,
+  Award,
+} from "lucide-react"
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -13,11 +25,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingHabit, setEditingHabit] = useState(null)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0])
 
   useEffect(() => {
-    loadHabits()
-  }, [selectedDate])
+    if (user) {
+      loadHabits()
+    } else {
+      setLoading(false)
+    }
+  }, [selectedDate, user])
 
   const loadHabits = async () => {
     try {
@@ -80,6 +97,15 @@ export default function Dashboard() {
     }
   }
 
+  const handleUncomplete = async (habitId) => {
+    try {
+      await api.uncompleteHabit(habitId, selectedDate)
+      loadHabits()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   const handleDelete = async (habitId) => {
     if (!confirm("Are you sure you want to delete this habit?")) return
 
@@ -89,6 +115,47 @@ export default function Dashboard() {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  const handleEdit = (habit) => {
+    setEditingHabit(habit)
+  }
+
+  if (!user) {
+    return (
+      <div style={{ minHeight: "100vh", backgroundColor: "var(--color-surface)" }}>
+        <header style={{ backgroundColor: "white", borderBottom: "1px solid var(--color-border)", padding: "1rem 0" }}>
+          <div className="container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: "bold", color: "var(--color-primary)" }}>Habitly</h1>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <Link to="/login" className="btn btn-outline">
+                Log In
+              </Link>
+              <Link to="/signup" className="btn btn-primary">
+                Sign Up
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <main style={{ padding: "4rem 0" }}>
+          <div className="container" style={{ textAlign: "center", maxWidth: "600px", margin: "0 auto" }}>
+            <h2 style={{ fontSize: "2.5rem", fontWeight: "bold", marginBottom: "1rem" }}>Welcome to Habitly</h2>
+            <p style={{ fontSize: "1.25rem", color: "var(--color-text-muted)", marginBottom: "2rem" }}>
+              Track your habits, build streaks, and achieve your goals. Sign up or log in to get started.
+            </p>
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "center" }}>
+              <Link to="/signup" className="btn btn-primary" style={{ fontSize: "1.125rem", padding: "0.75rem 2rem" }}>
+                Get Started
+              </Link>
+              <Link to="/login" className="btn btn-outline" style={{ fontSize: "1.125rem", padding: "0.75rem 2rem" }}>
+                Log In
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -251,6 +318,8 @@ export default function Dashboard() {
                         key={habit.id}
                         habit={habit}
                         onComplete={handleComplete}
+                        onUncomplete={handleUncomplete}
+                        onEdit={handleEdit}
                         onDelete={handleDelete}
                         isToday={isToday}
                         selectedDate={selectedDate}
@@ -293,6 +362,8 @@ export default function Dashboard() {
                         key={habit.id}
                         habit={habit}
                         onComplete={handleComplete}
+                        onUncomplete={handleUncomplete}
+                        onEdit={handleEdit}
                         onDelete={handleDelete}
                         isFuture={true}
                         selectedDate={selectedDate}
@@ -319,13 +390,29 @@ export default function Dashboard() {
       </main>
 
       {showCreateModal && <CreateHabitModal onClose={() => setShowCreateModal(false)} onSuccess={loadHabits} />}
+      {editingHabit && (
+        <EditHabitModal habit={editingHabit} onClose={() => setEditingHabit(null)} onSuccess={loadHabits} />
+      )}
     </div>
   )
 }
 
-function HabitCard({ habit, onComplete, onDelete, isToday = false, isFuture = false, selectedDate }) {
+function HabitCard({
+  habit,
+  onComplete,
+  onUncomplete,
+  onEdit,
+  onDelete,
+  isToday = false,
+  isFuture = false,
+  selectedDate,
+}) {
   const handleComplete = async () => {
     await onComplete(habit.id)
+  }
+
+  const handleUncomplete = async () => {
+    await onUncomplete(habit.id)
   }
 
   const getFrequencyColor = (frequency) => {
@@ -336,9 +423,18 @@ function HabitCard({ habit, onComplete, onDelete, isToday = false, isFuture = fa
         return "#10b981" // Green
       case "monthly":
         return "#f59e0b" // Orange
+      case "custom":
+        return "#8b5cf6" // Purple
       default:
         return "#6b7280" // Gray
     }
+  }
+
+  const getFrequencyLabel = (habit) => {
+    if (habit.frequency === "custom") {
+      return `Every ${habit.custom_interval} day${habit.custom_interval > 1 ? "s" : ""}`
+    }
+    return habit.frequency
   }
 
   const cardStyle = isFuture
@@ -385,8 +481,50 @@ function HabitCard({ habit, onComplete, onDelete, isToday = false, isFuture = fa
                 fontWeight: "500",
               }}
             >
-              {habit.frequency}
+              {getFrequencyLabel(habit)}
             </span>
+            {!isFuture && habit.currentStreak > 0 && (
+              <span
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: "500",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "0.25rem",
+                  backgroundColor: "#fef3c7",
+                  color: "#92400e",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.25rem",
+                }}
+              >
+                🔥 {habit.currentStreak}{" "}
+                {habit.frequency === "daily"
+                  ? "day"
+                  : habit.frequency === "weekly"
+                    ? "week"
+                    : habit.frequency === "monthly"
+                      ? "month"
+                      : "period"}
+                {habit.currentStreak > 1 ? "s" : ""}
+              </span>
+            )}
+            {!isFuture && habit.longestStreak > 0 && (
+              <span
+                style={{
+                  fontSize: "0.875rem",
+                  fontWeight: "500",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "0.25rem",
+                  backgroundColor: "#e0e7ff",
+                  color: "#3730a3",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.25rem",
+                }}
+              >
+                <Award size={14} /> Best: {habit.longestStreak}
+              </span>
+            )}
             <span style={{ fontSize: "0.875rem", color: "var(--color-text-muted)" }}>
               Started{" "}
               {new Date(habit.start_date).toLocaleDateString("en-US", {
@@ -404,16 +542,21 @@ function HabitCard({ habit, onComplete, onDelete, isToday = false, isFuture = fa
               Not Started
             </button>
           ) : habit.completed ? (
-            <button className="btn btn-success" disabled>
-              <CheckCircle size={20} style={{ marginRight: "0.5rem" }} />
-              Completed
-            </button>
+            <>
+              <button onClick={handleUncomplete} className="btn btn-success">
+                <CheckCircle size={20} style={{ marginRight: "0.5rem" }} />
+                Completed
+              </button>
+            </>
           ) : (
             <button onClick={handleComplete} className="btn btn-outline">
               <CheckCircle size={20} style={{ marginRight: "0.5rem" }} />
               Mark Complete
             </button>
           )}
+          <button onClick={() => onEdit(habit)} className="btn btn-ghost btn-icon">
+            <Edit size={20} />
+          </button>
           <button onClick={() => onDelete(habit.id)} className="btn btn-ghost btn-icon">
             <Trash2 size={20} />
           </button>
@@ -426,6 +569,7 @@ function HabitCard({ habit, onComplete, onDelete, isToday = false, isFuture = fa
 function CreateHabitModal({ onClose, onSuccess }) {
   const [name, setName] = useState("")
   const [frequency, setFrequency] = useState("daily")
+  const [customInterval, setCustomInterval] = useState(2)
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0])
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -436,7 +580,7 @@ function CreateHabitModal({ onClose, onSuccess }) {
     setLoading(true)
 
     try {
-      await api.createHabit(name, frequency, startDate)
+      await api.createHabit(name, frequency, startDate, frequency === "custom" ? customInterval : null)
       onSuccess()
       onClose()
     } catch (err) {
@@ -490,8 +634,30 @@ function CreateHabitModal({ onClose, onSuccess }) {
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
+                <option value="custom">Custom</option>
               </select>
             </div>
+
+            {frequency === "custom" && (
+              <div style={{ marginBottom: "1rem" }}>
+                <label htmlFor="customInterval" className="label">
+                  Every X Days
+                </label>
+                <input
+                  id="customInterval"
+                  type="number"
+                  className="input"
+                  min="1"
+                  max="365"
+                  value={customInterval}
+                  onChange={(e) => setCustomInterval(Number.parseInt(e.target.value))}
+                  required
+                />
+                <p style={{ fontSize: "0.875rem", color: "var(--color-text-muted)", marginTop: "0.25rem" }}>
+                  Habit repeats every {customInterval} day{customInterval > 1 ? "s" : ""}
+                </p>
+              </div>
+            )}
 
             <div style={{ marginBottom: "1.5rem" }}>
               <label htmlFor="startDate" className="label">
@@ -514,6 +680,129 @@ function CreateHabitModal({ onClose, onSuccess }) {
               <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading && <span className="spinner"></span>}
                 {loading ? "Creating..." : "Create Habit"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditHabitModal({ habit, onClose, onSuccess }) {
+  const [name, setName] = useState(habit.name)
+  const [frequency, setFrequency] = useState(habit.frequency)
+  const [customInterval, setCustomInterval] = useState(habit.custom_interval || 2)
+  const [startDate, setStartDate] = useState(new Date(habit.start_date).toISOString().split("T")[0])
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+
+    try {
+      await api.updateHabit(habit.id, name, frequency, startDate, frequency === "custom" ? customInterval : null)
+      onSuccess()
+      onClose()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 style={{ fontSize: "1.5rem", fontWeight: "600" }}>Edit Habit</h2>
+        </div>
+
+        <div className="modal-body">
+          {error && (
+            <div className="alert alert-error">
+              <AlertCircle size={20} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: "1rem" }}>
+              <label htmlFor="name" className="label">
+                Habit Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                className="input"
+                placeholder="e.g., Morning Exercise"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ marginBottom: "1rem" }}>
+              <label htmlFor="frequency" className="label">
+                Frequency
+              </label>
+              <select
+                id="frequency"
+                className="select"
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value)}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            {frequency === "custom" && (
+              <div style={{ marginBottom: "1rem" }}>
+                <label htmlFor="customInterval" className="label">
+                  Every X Days
+                </label>
+                <input
+                  id="customInterval"
+                  type="number"
+                  className="input"
+                  min="1"
+                  max="365"
+                  value={customInterval}
+                  onChange={(e) => setCustomInterval(Number.parseInt(e.target.value))}
+                  required
+                />
+                <p style={{ fontSize: "0.875rem", color: "var(--color-text-muted)", marginTop: "0.25rem" }}>
+                  Habit repeats every {customInterval} day{customInterval > 1 ? "s" : ""}
+                </p>
+              </div>
+            )}
+
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label htmlFor="startDate" className="label">
+                Start Date
+              </label>
+              <input
+                id="startDate"
+                type="date"
+                className="input"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" onClick={onClose} className="btn btn-outline">
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading && <span className="spinner"></span>}
+                {loading ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </form>

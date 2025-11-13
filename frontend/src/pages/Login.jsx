@@ -10,9 +10,15 @@ export default function Login() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard", { replace: true })
+    }
+  }, [user, navigate])
 
   useEffect(() => {
     if (searchParams.get("expired") === "true") {
@@ -78,7 +84,7 @@ export default function Login() {
               />
             </div>
 
-            <div style={{ marginBottom: "1.5rem" }}>
+            <div style={{ marginBottom: "0.5rem" }}>
               <label htmlFor="password" className="label">
                 Password
               </label>
@@ -91,6 +97,15 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+            </div>
+
+            <div style={{ marginBottom: "1.5rem", textAlign: "right" }}>
+              <Link
+                to="/forgot-password"
+                style={{ fontSize: "0.875rem", color: "var(--color-primary)", fontWeight: "500" }}
+              >
+                Forgot password?
+              </Link>
             </div>
 
             <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={loading}>

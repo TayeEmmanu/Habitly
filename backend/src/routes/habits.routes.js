@@ -1,6 +1,7 @@
 import express from "express"
 import {
   createHabit,
+  updateHabit,
   getHabits,
   deleteHabit,
   completeHabit,
@@ -15,6 +16,7 @@ import { authenticateToken } from "../middleware/auth.ts"
 const router = express.Router()
 
 router.post("/", authenticateToken, createHabit)
+router.put("/:id", authenticateToken, updateHabit)
 router.get("/", authenticateToken, getHabits)
 router.get("/by-date", authenticateToken, getHabitsByDate)
 router.get("/with-streaks", authenticateToken, getAllHabitsWithStreaks)

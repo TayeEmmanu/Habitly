@@ -1,23 +1,24 @@
 "use client"
 
 import { Navigate } from "react-router-dom"
-import { useAuth } from "../contexts/AuthContext.jsx"
+import { useAuth } from "../contexts/AuthContext"
+import SplashScreen from "./SplashScreen"
+import type { ReactNode } from "react"
 
-export default function ProtectedRoute({ children }) {
+interface ProtectedRouteProps {
+  children: ReactNode
+}
+
+export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth()
 
   if (loading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
-        <div className="spinner"></div>
-        <span>Loading...</span>
-      </div>
-    )
+    return <SplashScreen />
   }
 
   if (!user) {
     return <Navigate to="/login" replace />
   }
 
-  return children
+  return <>{children}</>
 }
