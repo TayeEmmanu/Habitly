@@ -185,7 +185,15 @@ export const api = {
     return handleResponse(response, request)
   },
 
-  async createHabit(name, frequency, startDate, customInterval = null) {
+  async createHabit(
+    name,
+    frequency,
+    startDate,
+    customInterval = null,
+    category = "productivity",
+    dailyGoal = 1,
+    allowMultiple = false,
+  ) {
     const token = localStorage.getItem("token")
     const request = {
       url: `${API_URL}/habits`,
@@ -194,7 +202,7 @@ export const api = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ name, frequency, startDate, customInterval }),
+      body: JSON.stringify({ name, frequency, startDate, customInterval, category, dailyGoal, allowMultiple }),
     }
     const response = await fetch(request.url, request)
     return handleResponse(response, request)
@@ -226,7 +234,16 @@ export const api = {
     return handleResponse(response, request)
   },
 
-  async updateHabit(id, name, frequency, startDate, customInterval = null) {
+  async updateHabit(
+    id,
+    name,
+    frequency,
+    startDate,
+    customInterval = null,
+    category = "productivity",
+    dailyGoal = 1,
+    allowMultiple = false,
+  ) {
     const token = localStorage.getItem("token")
     const request = {
       url: `${API_URL}/habits/${id}`,
@@ -235,7 +252,7 @@ export const api = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ name, frequency, startDate, customInterval }),
+      body: JSON.stringify({ name, frequency, startDate, customInterval, category, dailyGoal, allowMultiple }),
     }
     const response = await fetch(request.url, request)
     return handleResponse(response, request)
@@ -296,5 +313,53 @@ export const api = {
     })
 
     return handleResponse(response)
+  },
+
+  async decrementHabit(id, date) {
+    const token = localStorage.getItem("token")
+    const request = {
+      url: `${API_URL}/habits/${id}/decrement`,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ date }),
+    }
+    const response = await fetch(request.url, request)
+    return handleResponse(response, request)
+  },
+
+  async archiveHabit(id) {
+    const token = localStorage.getItem("token")
+    const request = {
+      url: `${API_URL}/habits/${id}/archive`,
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+    const response = await fetch(request.url, request)
+    return handleResponse(response, request)
+  },
+
+  async restoreHabit(id) {
+    const token = localStorage.getItem("token")
+    const request = {
+      url: `${API_URL}/habits/${id}/restore`,
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+    const response = await fetch(request.url, request)
+    return handleResponse(response, request)
+  },
+
+  async getArchivedHabits() {
+    const token = localStorage.getItem("token")
+    const request = {
+      url: `${API_URL}/habits/archived`,
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+    const response = await fetch(request.url, request)
+    return handleResponse(response, request)
   },
 }
